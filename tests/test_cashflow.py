@@ -1,46 +1,27 @@
-name: Liquidity Cash Flow Engine CI
+import pytest
+import numpy as np
+from cashflow_engine import CashFlowEngine
 
-on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-  workflow_dispatch:
 
-jobs:
-  validate:
-    runs-on: ubuntu-latest
+@pytest.fixture
+def sample_cash_flows():
+    inflows = [100.0] * 13
+    outflows = [80.0] * 13
+    return inflows, outflows
 
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.10"
+def test_ending_cash_calculation(sample_cash_flows):
+    inflows, outflows = sample_cash_flows
+    engine = CashFlowEngine(
+        starting_cash=500.0,
+        weekly_inflows=inflows,
+        weekly_outflows=outflows,
+        min_cash_threshold=-100.0
+    )
+    df = engine.generate_13_week_forecast()
 
-      - name: Install Dependencies & Quality Tools
-        run: |
-          python -m pip install --upgrade pip
-          pip install numpy pandas pytest pytest-cov flake8 mypy bandit
+    # Week 1: 500 + (100 - 80) = 520
+    assert df.loc[0, 'Ending_Cash'] == 520.0
 
-      - name: Run Linting (Flake8)
-        run: |
-          flake8 src/ tests/ --count --select=E9,F63,F7,F82 --show-source --statistics
-
-      - name: Run Type Checking (Mypy)
-        run: |
-          set +e
-          mypy src/ --ignore-missing-imports
-          exit 0
-
-      - name: Run Main Execution / Liquidity Script
-        run: |
-          export PYTHONPATH=src:.
-          python main.py || python liquidity-cashflow-engine.py || true
-
-      - name: Run Pytest Suite
-        run: |
-          export PYTHONPATH=src:.
-          pytest tests/ --cov=src --cov-report=term-missing
+    # Ensure native boolean evaluation for NumPy types
+    assert not df.loc[0, 'Liquidity_Breach']
